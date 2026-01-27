@@ -1,0 +1,2 @@
+# Generador_Inventario_Para_Consolidar_Y_Practicar_Power_BI
+Generador_Inventario_Para_Consolidar_Y_Practicar_Power_BI
