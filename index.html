@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Generador de Inventarios Mensuales</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <!-- Bootstrap 5 -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- SheetJS (Excel) -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+    <style>
+        body { background:#0f172a; color:#e5e7eb; }
+        .card { background:#020617; border:1px solid #1e293b; }
+        .form-control { background:#020617; color:#e5e7eb; border:1px solid #334155; }
+        .btn-primary { background:linear-gradient(90deg,#0ea5e9,#38bdf8); border:none; }
+        table { font-size:0.85rem; }
+    </style>
+</head>
+<body>
+
+<div class="container py-5">
+    <h1 class="fw-bold text-center mb-4">📦 Generador de Inventarios Mensuales</h1>
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <label>Total registros</label>
+            <input type="number" id="totalRegistros" class="form-control" value="2000">
+        </div>
+        <div class="col-md-3">
+            <label>Fecha inicio</label>
+            <input type="date" id="fechaInicio" class="form-control" value="2024-01-01">
+        </div>
+        <div class="col-md-3">
+            <label>Fecha fin</label>
+            <input type="date" id="fechaFin" class="form-control" value="2024-12-31">
+        </div>
+        <div class="col-md-3 d-flex align-items-end">
+            <button class="btn btn-primary w-100" onclick="generarInventario()">Generar</button>
+        </div>
+    </div>
+
+    <div class="card p-3">
+        <div class="d-flex gap-2 mb-3">
+            <button class="btn btn-success btn-sm" onclick="exportarCSV()">CSV mensual</button>
+            <button class="btn btn-warning btn-sm" onclick="exportarExcel()">Excel mensual</button>
+            <button class="btn btn-info btn-sm" onclick="exportarJSON()">JSON mensual</button>
+        </div>
+
+        <div class="table-responsive" style="max-height:400px;">
+            <table class="table table-dark table-bordered table-sm" id="tabla">
+                <thead>
+                    <tr>
+                        <th>Fecha</th><th>Región</th><th>Categoría</th><th>Producto</th>
+                        <th>Compra</th><th>Venta</th><th>Entradas</th><th>Salidas</th>
+                        <th>Stock</th><th>Rotación</th><th>Vendido</th><th>Valor Stock</th><th>Estatus</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+const regiones = ["Distrito Nacional","Santo Domingo Este","Santo Domingo Norte","Santo Domingo Oeste","Santiago","La Vega"];
+const productos = [
+ {c:"Alimentos",p:"Arroz Premium"},{c:"Alimentos",p:"Aceite Vegetal"},{c:"Alimentos",p:"Leche Entera"},
+ {c:"Higiene",p:"Papel Higiénico"},{c:"Higiene",p:"Jabón"},{c:"Bebidas",p:"Refresco Cola"},
+ {c:"Bebidas",p:"Agua Mineral"},{c:"Limpieza",p:"Detergente"},{c:"Limpieza",p:"Cloro"},
+ {c:"Cuidado Personal",p:"Shampoo"},{c:"Cuidado Personal",p:"Crema Corporal"},
+ {c:"Bebidas",p:"Jugo Natural"},{c:"Higiene",p:"Pasta Dental"},{c:"Alimentos",p:"Azúcar"},{c:"Alimentos",p:"Harina"}
+];
+
+let data = [];
+let stock = {};
+productos.forEach(x => stock[x.p] = Math.floor(Math.random()*400)+200);
+
+function generarInventario(){
+  data = [];
+  document.querySelector('#tabla tbody').innerHTML = '';
+
+  const total = +totalRegistros.value;
+  const fi = new Date(fechaInicio.value);
+  const ff = new Date(fechaFin.value);
+
+  for (let i = 0; i < total; i++) {
+    const f = new Date(fi.getTime() + Math.random() * (ff - fi));
+    const r = regiones[Math.floor(Math.random() * regiones.length)];
+    const pr = productos[Math.floor(Math.random() * productos.length)];
+
+    const pc = +(Math.random() * 400 + 100).toFixed(2);
+    const pv = +(pc * (1.3 + Math.random() * 0.4)).toFixed(2);
+
+    const stockInicial = stock[pr.p];
+
+    // -----------------------------
+    // 1) Selección de estatus objetivo (métrica obligatoria)
+    // -----------------------------
+    const rnd = Math.random();
+    let estatusObjetivo;
+    let stockObjetivo;
+
+    if (rnd <= 0.73) {
+      estatusObjetivo = 'Excelente';          // > 150
+      stockObjetivo = Math.floor(Math.random() * 200) + 151; // 151–350
+    } else if (rnd <= 0.88) {
+      estatusObjetivo = 'Óptimo';             // 50–149
+      stockObjetivo = Math.floor(Math.random() * 100) + 50;  // 50–149
+    } else if (rnd <= 0.98) {
+      estatusObjetivo = 'Alerta: Poco Inventario'; // 1–49
+      stockObjetivo = Math.floor(Math.random() * 49) + 1;    // 1–49
+    } else {
+      estatusObjetivo = 'Inventario Negativo'; // <= 0
+      stockObjetivo = -Math.floor(Math.random() * 20);       // 0 a -20
+    }
+
+    // -----------------------------
+    // 2) Cálculo coherente de entradas y salidas
+    // stock_final = stock_inicial + entradas - salidas
+    // -----------------------------
+    let entradas = Math.floor(Math.random() * 80);
+    let salidas = stockInicial + entradas - stockObjetivo;
+
+    // evitar valores absurdos
+    if (salidas < 0) {
+      salidas = 0;
+      entradas = stockObjetivo - stockInicial;
+    }
+
+    entradas = Math.max(0, Math.round(entradas));
+    salidas = Math.max(0, Math.round(salidas));
+
+    const stockFinal = stockInicial + entradas - salidas;
+    stock[pr.p] = stockFinal;
+
+    // -----------------------------
+    // 3) Estatus FINAL calculado (no inventado)
+    // -----------------------------
+    let estatus = 'Excelente';
+    if (stockFinal <= 0) estatus = 'Inventario Negativo';
+    else if (stockFinal < 50) estatus = 'Alerta: Poco Inventario';
+    else if (stockFinal < 150) estatus = 'Óptimo';
+
+    // -----------------------------
+    // 4) Métricas financieras
+    // -----------------------------
+    const rot = +(salidas / Math.max(stockInicial, 1)).toFixed(2);
+    const vv = +(salidas * pv).toFixed(2);
+    const vs = +(Math.max(stockFinal, 0) * pc).toFixed(2);
+
+    const reg = {
+      fecha: f.toISOString().split('T')[0],
+      region: r,
+      categoria: pr.c,
+      producto: pr.p,
+      precio_compra: pc,
+      precio_venta: pv,
+      entradas: entradas,
+      salidas: salidas,
+      stock_final: stockFinal,
+      rotacion: rot,
+      valor_vendido: vv,
+      valor_stock: vs,
+      estatus: estatus
+    };
+
+    data.push(reg);
+
+    tabla.querySelector('tbody').insertAdjacentHTML(
+      'beforeend',
+      `<tr><td>${reg.fecha}</td><td>${r}</td><td>${pr.c}</td><td>${pr.p}</td><td>${pc}</td><td>${pv}</td><td>${entradas}</td><td>${salidas}</td><td>${stockFinal}</td><td>${rot}</td><td>${vv}</td><td>${vs}</td><td>${estatus}</td></tr>`
+    );
+  }
+}
+
+function agruparPorMes(){
+ const m = {};
+ const fi = new Date(fechaInicio.value);
+ const ff = new Date(fechaFin.value);
+
+ // inicializar TODOS los meses del rango
+ const cursor = new Date(fi.getFullYear(), fi.getMonth(), 1);
+ const end = new Date(ff.getFullYear(), ff.getMonth(), 1);
+
+ while (cursor <= end) {
+   const key = `${cursor.getFullYear()}-${String(cursor.getMonth()+1).padStart(2,'0')}`;
+   m[key] = [];
+   cursor.setMonth(cursor.getMonth() + 1);
+ }
+
+ // asignar registros a su mes correspondiente
+ data.forEach(d => {
+   const key = d.fecha.slice(0,7);
+   if (m[key]) m[key].push(d);
+ });
+
+ return m;
+}
+
+function exportarCSV(){
+ const m=agruparPorMes();
+ for(const k in m){
+  let csv=Object.keys(m[k][0]).join(',')+'\n';
+  m[k].forEach(r=>{ csv+=Object.values(r).join(',')+'\n'; });
+  descargar(csv,`inventario_${k}.csv`,'text/csv');
+ }
+}
+
+function exportarJSON(){
+ const m=agruparPorMes();
+ for(const k in m){
+  descargar(JSON.stringify(m[k],null,2),`inventario_${k}.json`,'application/json');
+ }
+}
+
+function exportarExcel(){
+ const m=agruparPorMes();
+ for(const k in m){
+  const ws=XLSX.utils.json_to_sheet(m[k]);
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'Inventario');
+  XLSX.writeFile(wb,`inventario_${k}.xlsx`);
+ }
+}
+
+function descargar(contenido,nombre,tipo){
+ const blob=new Blob([contenido],{type:tipo});
+ const a=document.createElement('a');
+ a.href=URL.createObjectURL(blob);
+ a.download=nombre;
+ a.click();
+}
+</script>
+
+</body>
+</html>
