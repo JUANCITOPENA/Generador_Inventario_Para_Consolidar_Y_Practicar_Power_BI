@@ -83,7 +83,8 @@ function generarInventario(){
   document.querySelector('#tabla tbody').innerHTML = '';
 
   const total = +totalRegistros.value;
-  // Forzamos el uso de UTC agregando horas específicas al rango de fechas
+  
+  // Usamos formato UTC estricto para evitar desfases de un día por zona horaria local
   const fi = new Date(fechaInicio.value + 'T00:00:00Z');
   const ff = new Date(fechaFin.value + 'T23:59:59Z');
 
@@ -97,7 +98,6 @@ function generarInventario(){
 
     const stockInicial = stock[pr.p];
 
-    // 1) Selección de estatus objetivo
     const rnd = Math.random();
     let estatusObjetivo;
     let stockObjetivo;
@@ -116,7 +116,6 @@ function generarInventario(){
       stockObjetivo = -Math.floor(Math.random() * 20);
     }
 
-    // 2) Cálculo coherente de entradas y salidas
     let entradas = Math.floor(Math.random() * 80);
     let salidas = stockInicial + entradas - stockObjetivo;
 
@@ -131,13 +130,11 @@ function generarInventario(){
     const stockFinal = stockInicial + entradas - salidas;
     stock[pr.p] = stockFinal;
 
-    // 3) Estatus FINAL calculado
     let estatus = 'Excelente';
     if (stockFinal <= 0) estatus = 'Inventario Negativo';
     else if (stockFinal < 50) estatus = 'Alerta: Poco Inventario';
     else if (stockFinal < 150) estatus = 'Óptimo';
 
-    // 4) Métricas financieras
     const rot = +(salidas / Math.max(stockInicial, 1)).toFixed(2);
     const vv = +(salidas * pv).toFixed(2);
     const vs = +(Math.max(stockFinal, 0) * pc).toFixed(2);
@@ -161,17 +158,16 @@ function generarInventario(){
     data.push(reg);
   }
 
-  // Ordenar los datos cronológicamente antes de mostrarlos en la tabla
+  // Ordenar la vista de la tabla de forma cronológica
   data.sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
 
-  // Renderizar la tabla de forma eficiente
-  const fragment = document.createDocumentFragment();
+  const tbody = document.querySelector('#tabla tbody');
   data.forEach(reg => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${reg.fecha}</td><td>${reg.region}</td><td>${reg.categoria}</td><td>${reg.producto}</td><td>${reg.precio_compra}</td><td>${reg.precio_venta}</td><td>${reg.entradas}</td><td>${reg.salidas}</td><td>${reg.stock_final}</td><td>${reg.rotacion}</td><td>${reg.valor_vendido}</td><td>${reg.valor_stock}</td><td>${reg.estatus}</td>`;
-    fragment.appendChild(tr);
+    tbody.insertAdjacentHTML(
+      'beforeend',
+      `<tr><td>${reg.fecha}</td><td>${reg.region}</td><td>${reg.categoria}</td><td>${reg.producto}</td><td>${reg.precio_compra}</td><td>${reg.precio_venta}</td><td>${reg.entradas}</td><td>${reg.salidas}</td><td>${reg.stock_final}</td><td>${reg.rotacion}</td><td>${reg.valor_vendido}</td><td>${reg.valor_stock}</td><td>${reg.estatus}</td></tr>`
+    );
   });
-  tabla.querySelector('tbody').appendChild(fragment);
 }
 
 function agruparPorMes(){
@@ -179,7 +175,7 @@ function agruparPorMes(){
  const fi = new Date(fechaInicio.value + 'T00:00:00Z');
  const ff = new Date(fechaFin.value + 'T23:59:59Z');
 
- // Inicializar los meses utilizando métodos UTC estrictos
+ // Inicialización de rangos mensuales en formato UTC
  const cursor = new Date(Date.UTC(fi.getUTCFullYear(), fi.getUTCMonth(), 1));
  const end = new Date(Date.UTC(ff.getUTCFullYear(), ff.getUTCMonth(), 1));
 
@@ -189,48 +185,63 @@ function agruparPorMes(){
    cursor.setUTCMonth(cursor.getUTCMonth() + 1);
  }
 
- // Asignar registros a su mes correspondiente
  data.forEach(d => {
    const key = d.fecha.slice(0,7);
    if (m[key]) m[key].push(d);
  });
 
- // Eliminar claves que no tengan registros para prevenir fallos en la exportación
+ // Omitir meses que no contengan registros para evitar errores de referencia
  for (const k in m) {
-   if (m[k].length === 0) {
-     delete m[k];
-   }
+   if (m[k].length === 0) delete m[k];
  }
 
  return m;
 }
 
+// Exportación de CSVs individuales con pausa de 1.2 segundos entre descargas
 function exportarCSV(){
  const m=agruparPorMes();
+ let delay = 0;
  for(const k in m){
   if (m[k].length === 0) continue;
   let csv=Object.keys(m[k][0]).join(',')+'\n';
   m[k].forEach(r=>{ csv+=Object.values(r).join(',')+'\n'; });
-  descargar(csv,`inventario_${k}.csv`,'text/csv');
+  
+  setTimeout(() => {
+    descargar(csv,`inventario_${k}.csv`,'text/csv');
+  }, delay);
+  delay += 1200;
  }
 }
 
+// Exportación de JSONs individuales con pausa de 1.2 segundos entre descargas
 function exportarJSON(){
  const m=agruparPorMes();
+ let delay = 0;
  for(const k in m){
   if (m[k].length === 0) continue;
-  descargar(JSON.stringify(m[k],null,2),`inventario_${k}.json`,'application/json');
+  
+  setTimeout(() => {
+    descargar(JSON.stringify(m[k],null,2),`inventario_${k}.json`,'application/json');
+  }, delay);
+  delay += 1200;
  }
 }
 
+// Exportación de Excels individuales con pausa de 1.2 segundos entre descargas
 function exportarExcel(){
  const m=agruparPorMes();
+ let delay = 0;
  for(const k in m){
   if (m[k].length === 0) continue;
-  const ws=XLSX.utils.json_to_sheet(m[k]);
-  const wb=XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb,ws,'Inventario');
-  XLSX.writeFile(wb,`inventario_${k}.xlsx`);
+  
+  setTimeout(() => {
+    const ws=XLSX.utils.json_to_sheet(m[k]);
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,ws,'Inventario');
+    XLSX.writeFile(wb,`inventario_${k}.xlsx`);
+  }, delay);
+  delay += 1200;
  }
 }
 
