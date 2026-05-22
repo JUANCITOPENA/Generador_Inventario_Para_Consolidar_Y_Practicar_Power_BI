@@ -59,7 +59,7 @@
                         <th>Compra</th><th>Venta</th>
                         <th class="col-stock-inicial">Stock Inicial</th>
                         <th>Entradas</th><th>Salidas</th><th>Stock Final</th>
-                        <th class="col-metricas">% Rotación</th><th class="col-metricas">Días Rotación</th>
+                        <th>Rotación</th><th class="col-metricas">% Rotación</th><th class="col-metricas">Días Rotación</th>
                         <th>Vendido</th><th>Valor Stock</th><th>Estatus</th>
                     </tr>
                 </thead>
@@ -89,13 +89,12 @@ function generarInventario(){
   const fi = new Date(fechaInicio.value + 'T00:00:00Z');
   const ff = new Date(fechaFin.value + 'T23:59:59Z');
 
-  // 1. INICIALIZAMOS TODOS LOS PRODUCTOS EN CERO
+  // Inicializamos en cero
   let stockFisico = {};
   productos.forEach(x => { stockFisico[x.p] = 0; });
 
   let temporalData = [];
 
-  // 2. Generar esqueleto de transacciones
   for (let i = 0; i < total; i++) {
     const f = new Date(fi.getTime() + Math.random() * (ff - fi));
     const r = regiones[Math.floor(Math.random() * regiones.length)];
@@ -114,10 +113,10 @@ function generarInventario(){
     });
   }
 
-  // 3. Orden estricto cronológico
+  // Orden cronológico estricto
   temporalData.sort((a, b) => a.fechaObj - b.fechaObj);
 
-  // 4. Matemáticas y Lógica diaria
+  // Matemáticas y Lógica
   temporalData.forEach(reg => {
     const stockInicial = stockFisico[reg.producto];
     let entradas = 0;
@@ -138,21 +137,24 @@ function generarInventario(){
     const stockFinal = disponible - salidas;
     stockFisico[reg.producto] = stockFinal; 
 
-    // --- CÁLCULOS DE ROTACIÓN SOLICITADOS ---
+    // --- LAS 3 MÉTRICAS DE ROTACIÓN JUNTAS ---
     
-    // % de Rotación: (Salidas / Disponible) * 100
+    // 1. Rotación original (Índice)
+    const rotacionOriginal = +(salidas / Math.max(stockInicial, 1)).toFixed(2);
+
+    // 2. % de Rotación
     let pctRotacion = 0;
     if (disponible > 0) {
       pctRotacion = +((salidas / disponible) * 100).toFixed(2);
     }
 
-    // Días de Rotación: Stock Final / Salidas (Días que durará el stock al ritmo actual)
+    // 3. Días de Rotación
     let diasRotacion = 0;
     if (salidas > 0) {
       diasRotacion = +(stockFinal / salidas).toFixed(2);
     }
-
-    // --- FIN CÁLCULOS ROTACIÓN ---
+    
+    // --- FIN MÉTRICAS ROTACIÓN ---
 
     const vv = +(salidas * reg.precio_venta).toFixed(2);
     const vs = +(Math.max(stockFinal, 0) * reg.precio_compra).toFixed(2);
@@ -173,6 +175,7 @@ function generarInventario(){
       entradas: entradas,
       salidas: salidas,
       stock_final: stockFinal,
+      rotacion: rotacionOriginal,
       porcentaje_rotacion: pctRotacion,
       dias_rotacion: diasRotacion,
       valor_vendido: vv,
@@ -181,7 +184,7 @@ function generarInventario(){
     });
   });
 
-  // 5. Renderizar tabla
+  // Renderizar tabla
   const tbody = document.querySelector('#tabla tbody');
   data.forEach(reg => {
     tbody.insertAdjacentHTML(
@@ -197,6 +200,7 @@ function generarInventario(){
         <td>${reg.entradas}</td>
         <td>${reg.salidas}</td>
         <td style="font-weight:bold;">${reg.stock_final}</td>
+        <td>${reg.rotacion}</td>
         <td class="col-metricas">${reg.porcentaje_rotacion}%</td>
         <td class="col-metricas">${reg.dias_rotacion}</td>
         <td>$${reg.valor_vendido}</td>
