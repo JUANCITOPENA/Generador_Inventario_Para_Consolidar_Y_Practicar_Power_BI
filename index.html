@@ -17,6 +17,7 @@
         .form-control { background:#020617; color:#e5e7eb; border:1px solid #334155; }
         .btn-primary { background:linear-gradient(90deg,#0ea5e9,#38bdf8); border:none; }
         table { font-size:0.85rem; }
+        .col-stock-inicial { background-color: rgba(234, 179, 8, 0.15) !important; color: #fde047; font-weight: bold;}
     </style>
 </head>
 <body>
@@ -49,13 +50,15 @@
             <button class="btn btn-info btn-sm" onclick="exportarJSON()">JSON mensual</button>
         </div>
 
-        <div class="table-responsive" style="max-height:400px;">
+        <div class="table-responsive" style="max-height:500px;">
             <table class="table table-dark table-bordered table-sm" id="tabla">
                 <thead>
                     <tr>
                         <th>Fecha</th><th>Región</th><th>Categoría</th><th>Producto</th>
-                        <th>Compra</th><th>Venta</th><th>Entradas</th><th>Salidas</th>
-                        <th>Stock Final</th><th>Rotación</th><th>Vendido</th><th>Valor Stock</th><th>Estatus</th>
+                        <th>Compra</th><th>Venta</th>
+                        <th class="col-stock-inicial">Stock Inicial</th>
+                        <th>Entradas</th><th>Salidas</th><th>Stock Final</th>
+                        <th>Rotación</th><th>Vendido</th><th>Valor Stock</th><th>Estatus</th>
                     </tr>
                 </thead>
                 <tbody></tbody>
@@ -84,14 +87,15 @@ function generarInventario(){
   const fi = new Date(fechaInicio.value + 'T00:00:00Z');
   const ff = new Date(fechaFin.value + 'T23:59:59Z');
 
-  // 1) Inicializar el stock base real para cada producto antes de simular el año
+  // 1. INICIALIZAMOS TODOS LOS PRODUCTOS EN CERO.
   let stockFisico = {};
   productos.forEach(x => {
-    stockFisico[x.p] = Math.floor(Math.random() * 300) + 150; // Stock inicial inicializado entre 150 y 450 unidades
+    stockFisico[x.p] = 0; 
   });
 
-  // 2) Generar un esqueleto de transacciones temporal
   let temporalData = [];
+
+  // 2. Generar fechas, regiones y precios primero
   for (let i = 0; i < total; i++) {
     const f = new Date(fi.getTime() + Math.random() * (ff - fi));
     const r = regiones[Math.floor(Math.random() * regiones.length)];
@@ -111,38 +115,44 @@ function generarInventario(){
     });
   }
 
-  // 3) Ordenar el esqueleto cronológicamente de forma estricta por fecha
+  // 3. Ordenar estrictamente por fecha de menor a mayor
   temporalData.sort((a, b) => a.fechaObj - b.fechaObj);
 
-  // 4) Calcular el flujo de inventario de forma lineal (paso a paso)
+  // 4. Hacer la matemática día por día, producto por producto
   temporalData.forEach(reg => {
     const stockInicial = stockFisico[reg.producto];
 
-    // Entrada de mercancía aleatoria (reabastecimiento ocasional para mantener stock saludable)
     let entradas = 0;
-    if (Math.random() > 0.5) { // 50% de probabilidad de recibir lote de compras
+    // Si el producto está en 0, le obligamos a recibir mercancía para poder vender
+    if (stockInicial === 0) {
+      entradas = Math.floor(Math.random() * 100) + 50; 
+    } else if (Math.random() > 0.6) {
+      // 40% de probabilidad de recibir una entrada si ya tiene stock
       entradas = Math.floor(Math.random() * 80) + 10;
     }
 
     const disponible = stockInicial + entradas;
 
-    // Las salidas (ventas) nunca pueden superar el inventario disponible acumulado
+    // Las salidas NUNCA pueden ser mayores que (Stock Inicial + Entradas)
     let salidas = 0;
     if (disponible > 0) {
-      salidas = Math.floor(Math.random() * Math.min(disponible, 60)); // Límite lógico de salidas por transacción
+      salidas = Math.floor(Math.random() * Math.min(disponible, 60)); 
     }
 
-    const stockFinal = disponible - salidas;
-    stockFisico[reg.producto] = stockFinal; // Actualizamos el stock global del producto para la siguiente fecha
+    // EL CALCULO EXACTO QUE PEDISTE:
+    const stockFinal = stockInicial + entradas - salidas;
+    
+    // Guardamos el stock final para que sea el stock inicial de la próxima fila de este producto
+    stockFisico[reg.producto] = stockFinal; 
 
-    // Métricas financieras basadas en las salidas físicas reales
+    // Métricas
     const rot = +(salidas / Math.max(stockInicial, 1)).toFixed(2);
     const vv = +(salidas * reg.precio_venta).toFixed(2);
     const vs = +(Math.max(stockFinal, 0) * reg.precio_compra).toFixed(2);
 
-    // Estatus basado en el stock final real de la bodega
+    // Mensaje del estatus según tu regla
     let estatus = 'Excelente';
-    if (stockFinal <= 0) estatus = 'Inventario Negativo';
+    if (stockFinal <= 0) estatus = 'Agotado (0 Unidades)';
     else if (stockFinal < 50) estatus = 'Alerta: Poco Inventario';
     else if (stockFinal < 150) estatus = 'Óptimo';
 
@@ -153,6 +163,7 @@ function generarInventario(){
       producto: reg.producto,
       precio_compra: reg.precio_compra,
       precio_venta: reg.precio_venta,
+      stock_inicial: stockInicial, // <--- AQUI SE AGREGA PARA EXPORTAR
       entradas: entradas,
       salidas: salidas,
       stock_final: stockFinal,
@@ -163,12 +174,27 @@ function generarInventario(){
     });
   });
 
-  // 5) Mostrar en la interfaz visual
+  // 5. Dibujar la tabla
   const tbody = document.querySelector('#tabla tbody');
   data.forEach(reg => {
     tbody.insertAdjacentHTML(
       'beforeend',
-      `<tr><td>${reg.fecha}</td><td>${reg.region}</td><td>${reg.categoria}</td><td>${reg.producto}</td><td>${reg.precio_compra}</td><td>${reg.precio_venta}</td><td>${reg.entradas}</td><td>${reg.salidas}</td><td>${reg.stock_final}</td><td>${reg.rotacion}</td><td>${reg.valor_vendido}</td><td>${reg.valor_stock}</td><td>${reg.estatus}</td></tr>`
+      `<tr>
+        <td>${reg.fecha}</td>
+        <td>${reg.region}</td>
+        <td>${reg.categoria}</td>
+        <td>${reg.producto}</td>
+        <td>${reg.precio_compra}</td>
+        <td>${reg.precio_venta}</td>
+        <td class="col-stock-inicial">${reg.stock_inicial}</td>
+        <td>${reg.entradas}</td>
+        <td>${reg.salidas}</td>
+        <td style="font-weight:bold;">${reg.stock_final}</td>
+        <td>${reg.rotacion}</td>
+        <td>${reg.valor_vendido}</td>
+        <td>${reg.valor_stock}</td>
+        <td>${reg.estatus}</td>
+      </tr>`
     );
   });
 }
@@ -199,6 +225,7 @@ function agruparPorMes(){
  return m;
 }
 
+// Descarga 12 archivos separados (pausa de 1.2 segundos entre cada uno)
 function exportarCSV(){
  const m=agruparPorMes();
  let delay = 0;
