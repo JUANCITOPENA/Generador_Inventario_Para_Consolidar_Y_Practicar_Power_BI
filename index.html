@@ -18,47 +18,49 @@
         .btn-primary { background:linear-gradient(90deg,#0ea5e9,#38bdf8); border:none; }
         table { font-size:0.85rem; }
         .col-stock-inicial { background-color: rgba(234, 179, 8, 0.15) !important; color: #fde047; font-weight: bold;}
+        .col-metricas { color: #38bdf8; font-weight: bold;}
     </style>
 </head>
 <body>
 
-<div class="container py-5">
+<div class="container-fluid py-5 px-4">
     <h1 class="fw-bold text-center mb-4">📦 Generador de Inventarios Mensuales</h1>
 
-    <div class="row g-3 mb-4">
-        <div class="col-md-3">
+    <div class="row g-3 mb-4 justify-content-center">
+        <div class="col-md-2">
             <label>Total registros</label>
             <input type="number" id="totalRegistros" class="form-control" value="2000">
         </div>
-        <div class="col-md-3">
+        <div class="col-md-2">
             <label>Fecha inicio</label>
             <input type="date" id="fechaInicio" class="form-control" value="2024-01-01">
         </div>
-        <div class="col-md-3">
+        <div class="col-md-2">
             <label>Fecha fin</label>
             <input type="date" id="fechaFin" class="form-control" value="2024-12-31">
         </div>
-        <div class="col-md-3 d-flex align-items-end">
+        <div class="col-md-2 d-flex align-items-end">
             <button class="btn btn-primary w-100" onclick="generarInventario()">Generar</button>
         </div>
     </div>
 
     <div class="card p-3">
         <div class="d-flex gap-2 mb-3">
-            <button class="btn btn-success btn-sm" onclick="exportarCSV()">CSV mensual</button>
-            <button class="btn btn-warning btn-sm" onclick="exportarExcel()">Excel mensual</button>
-            <button class="btn btn-info btn-sm" onclick="exportarJSON()">JSON mensual</button>
+            <button class="btn btn-success btn-sm" onclick="exportarCSV()">CSV mensual (12 Archivos)</button>
+            <button class="btn btn-warning btn-sm" onclick="exportarExcel()">Excel mensual (12 Archivos)</button>
+            <button class="btn btn-info btn-sm" onclick="exportarJSON()">JSON mensual (12 Archivos)</button>
         </div>
 
-        <div class="table-responsive" style="max-height:500px;">
-            <table class="table table-dark table-bordered table-sm" id="tabla">
+        <div class="table-responsive" style="max-height:600px;">
+            <table class="table table-dark table-bordered table-sm text-center align-middle" id="tabla">
                 <thead>
                     <tr>
                         <th>Fecha</th><th>Región</th><th>Categoría</th><th>Producto</th>
                         <th>Compra</th><th>Venta</th>
                         <th class="col-stock-inicial">Stock Inicial</th>
                         <th>Entradas</th><th>Salidas</th><th>Stock Final</th>
-                        <th>Rotación</th><th>Vendido</th><th>Valor Stock</th><th>Estatus</th>
+                        <th class="col-metricas">% Rotación</th><th class="col-metricas">Días Rotación</th>
+                        <th>Vendido</th><th>Valor Stock</th><th>Estatus</th>
                     </tr>
                 </thead>
                 <tbody></tbody>
@@ -87,20 +89,17 @@ function generarInventario(){
   const fi = new Date(fechaInicio.value + 'T00:00:00Z');
   const ff = new Date(fechaFin.value + 'T23:59:59Z');
 
-  // 1. INICIALIZAMOS TODOS LOS PRODUCTOS EN CERO.
+  // 1. INICIALIZAMOS TODOS LOS PRODUCTOS EN CERO
   let stockFisico = {};
-  productos.forEach(x => {
-    stockFisico[x.p] = 0; 
-  });
+  productos.forEach(x => { stockFisico[x.p] = 0; });
 
   let temporalData = [];
 
-  // 2. Generar fechas, regiones y precios primero
+  // 2. Generar esqueleto de transacciones
   for (let i = 0; i < total; i++) {
     const f = new Date(fi.getTime() + Math.random() * (ff - fi));
     const r = regiones[Math.floor(Math.random() * regiones.length)];
     const pr = productos[Math.floor(Math.random() * productos.length)];
-
     const pc = +(Math.random() * 300 + 50).toFixed(2);
     const pv = +(pc * (1.15 + Math.random() * 0.3)).toFixed(2);
 
@@ -115,42 +114,49 @@ function generarInventario(){
     });
   }
 
-  // 3. Ordenar estrictamente por fecha de menor a mayor
+  // 3. Orden estricto cronológico
   temporalData.sort((a, b) => a.fechaObj - b.fechaObj);
 
-  // 4. Hacer la matemática día por día, producto por producto
+  // 4. Matemáticas y Lógica diaria
   temporalData.forEach(reg => {
     const stockInicial = stockFisico[reg.producto];
-
     let entradas = 0;
-    // Si el producto está en 0, le obligamos a recibir mercancía para poder vender
+    
     if (stockInicial === 0) {
       entradas = Math.floor(Math.random() * 100) + 50; 
     } else if (Math.random() > 0.6) {
-      // 40% de probabilidad de recibir una entrada si ya tiene stock
       entradas = Math.floor(Math.random() * 80) + 10;
     }
 
     const disponible = stockInicial + entradas;
 
-    // Las salidas NUNCA pueden ser mayores que (Stock Inicial + Entradas)
     let salidas = 0;
     if (disponible > 0) {
       salidas = Math.floor(Math.random() * Math.min(disponible, 60)); 
     }
 
-    // EL CALCULO EXACTO QUE PEDISTE:
-    const stockFinal = stockInicial + entradas - salidas;
-    
-    // Guardamos el stock final para que sea el stock inicial de la próxima fila de este producto
+    const stockFinal = disponible - salidas;
     stockFisico[reg.producto] = stockFinal; 
 
-    // Métricas
-    const rot = +(salidas / Math.max(stockInicial, 1)).toFixed(2);
+    // --- CÁLCULOS DE ROTACIÓN SOLICITADOS ---
+    
+    // % de Rotación: (Salidas / Disponible) * 100
+    let pctRotacion = 0;
+    if (disponible > 0) {
+      pctRotacion = +((salidas / disponible) * 100).toFixed(2);
+    }
+
+    // Días de Rotación: Stock Final / Salidas (Días que durará el stock al ritmo actual)
+    let diasRotacion = 0;
+    if (salidas > 0) {
+      diasRotacion = +(stockFinal / salidas).toFixed(2);
+    }
+
+    // --- FIN CÁLCULOS ROTACIÓN ---
+
     const vv = +(salidas * reg.precio_venta).toFixed(2);
     const vs = +(Math.max(stockFinal, 0) * reg.precio_compra).toFixed(2);
 
-    // Mensaje del estatus según tu regla
     let estatus = 'Excelente';
     if (stockFinal <= 0) estatus = 'Agotado (0 Unidades)';
     else if (stockFinal < 50) estatus = 'Alerta: Poco Inventario';
@@ -163,18 +169,19 @@ function generarInventario(){
       producto: reg.producto,
       precio_compra: reg.precio_compra,
       precio_venta: reg.precio_venta,
-      stock_inicial: stockInicial, // <--- AQUI SE AGREGA PARA EXPORTAR
+      stock_inicial: stockInicial,
       entradas: entradas,
       salidas: salidas,
       stock_final: stockFinal,
-      rotacion: rot,
+      porcentaje_rotacion: pctRotacion,
+      dias_rotacion: diasRotacion,
       valor_vendido: vv,
       valor_stock: vs,
       estatus: estatus
     });
   });
 
-  // 5. Dibujar la tabla
+  // 5. Renderizar tabla
   const tbody = document.querySelector('#tabla tbody');
   data.forEach(reg => {
     tbody.insertAdjacentHTML(
@@ -184,15 +191,16 @@ function generarInventario(){
         <td>${reg.region}</td>
         <td>${reg.categoria}</td>
         <td>${reg.producto}</td>
-        <td>${reg.precio_compra}</td>
-        <td>${reg.precio_venta}</td>
+        <td>$${reg.precio_compra}</td>
+        <td>$${reg.precio_venta}</td>
         <td class="col-stock-inicial">${reg.stock_inicial}</td>
         <td>${reg.entradas}</td>
         <td>${reg.salidas}</td>
         <td style="font-weight:bold;">${reg.stock_final}</td>
-        <td>${reg.rotacion}</td>
-        <td>${reg.valor_vendido}</td>
-        <td>${reg.valor_stock}</td>
+        <td class="col-metricas">${reg.porcentaje_rotacion}%</td>
+        <td class="col-metricas">${reg.dias_rotacion}</td>
+        <td>$${reg.valor_vendido}</td>
+        <td>$${reg.valor_stock}</td>
         <td>${reg.estatus}</td>
       </tr>`
     );
@@ -203,7 +211,6 @@ function agruparPorMes(){
  const m = {};
  const fi = new Date(fechaInicio.value + 'T00:00:00Z');
  const ff = new Date(fechaFin.value + 'T23:59:59Z');
-
  const cursor = new Date(Date.UTC(fi.getUTCFullYear(), fi.getUTCMonth(), 1));
  const end = new Date(Date.UTC(ff.getUTCFullYear(), ff.getUTCMonth(), 1));
 
@@ -225,7 +232,7 @@ function agruparPorMes(){
  return m;
 }
 
-// Descarga 12 archivos separados (pausa de 1.2 segundos entre cada uno)
+// Descarga 12 archivos CSV separados (pausa de 1.2s)
 function exportarCSV(){
  const m=agruparPorMes();
  let delay = 0;
@@ -233,33 +240,28 @@ function exportarCSV(){
   if (m[k].length === 0) continue;
   let csv=Object.keys(m[k][0]).join(',')+'\n';
   m[k].forEach(r=>{ csv+=Object.values(r).join(',')+'\n'; });
-  
-  setTimeout(() => {
-    descargar(csv,`inventario_${k}.csv`,'text/csv');
-  }, delay);
+  setTimeout(() => { descargar(csv,`inventario_${k}.csv`,'text/csv'); }, delay);
   delay += 1200;
  }
 }
 
+// Descarga 12 archivos JSON separados (pausa de 1.2s)
 function exportarJSON(){
  const m=agruparPorMes();
  let delay = 0;
  for(const k in m){
   if (m[k].length === 0) continue;
-  
-  setTimeout(() => {
-    descargar(JSON.stringify(m[k],null,2),`inventario_${k}.json`,'application/json');
-  }, delay);
+  setTimeout(() => { descargar(JSON.stringify(m[k],null,2),`inventario_${k}.json`,'application/json'); }, delay);
   delay += 1200;
  }
 }
 
+// Descarga 12 archivos EXCEL separados (pausa de 1.2s)
 function exportarExcel(){
  const m=agruparPorMes();
  let delay = 0;
  for(const k in m){
   if (m[k].length === 0) continue;
-  
   setTimeout(() => {
     const ws=XLSX.utils.json_to_sheet(m[k]);
     const wb=XLSX.utils.book_new();
