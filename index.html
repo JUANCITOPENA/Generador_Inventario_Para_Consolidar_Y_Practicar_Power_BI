@@ -55,7 +55,7 @@
                     <tr>
                         <th>Fecha</th><th>Región</th><th>Categoría</th><th>Producto</th>
                         <th>Compra</th><th>Venta</th><th>Entradas</th><th>Salidas</th>
-                        <th>Stock</th><th>Rotación</th><th>Vendido</th><th>Valor Stock</th><th>Estatus</th>
+                        <th>Stock Final</th><th>Rotación</th><th>Vendido</th><th>Valor Stock</th><th>Estatus</th>
                     </tr>
                 </thead>
                 <tbody></tbody>
@@ -75,77 +75,84 @@ const productos = [
 ];
 
 let data = [];
-let stock = {};
-productos.forEach(x => stock[x.p] = Math.floor(Math.random()*400)+200);
 
 function generarInventario(){
   data = [];
   document.querySelector('#tabla tbody').innerHTML = '';
 
   const total = +totalRegistros.value;
-  
-  // Usamos formato UTC estricto para evitar desfases de un día por zona horaria local
   const fi = new Date(fechaInicio.value + 'T00:00:00Z');
   const ff = new Date(fechaFin.value + 'T23:59:59Z');
 
+  // 1) Inicializar el stock base real para cada producto antes de simular el año
+  let stockFisico = {};
+  productos.forEach(x => {
+    stockFisico[x.p] = Math.floor(Math.random() * 300) + 150; // Stock inicial inicializado entre 150 y 450 unidades
+  });
+
+  // 2) Generar un esqueleto de transacciones temporal
+  let temporalData = [];
   for (let i = 0; i < total; i++) {
     const f = new Date(fi.getTime() + Math.random() * (ff - fi));
     const r = regiones[Math.floor(Math.random() * regiones.length)];
     const pr = productos[Math.floor(Math.random() * productos.length)];
 
-    const pc = +(Math.random() * 400 + 100).toFixed(2);
-    const pv = +(pc * (1.3 + Math.random() * 0.4)).toFixed(2);
+    const pc = +(Math.random() * 300 + 50).toFixed(2);
+    const pv = +(pc * (1.15 + Math.random() * 0.3)).toFixed(2);
 
-    const stockInicial = stock[pr.p];
-
-    const rnd = Math.random();
-    let estatusObjetivo;
-    let stockObjetivo;
-
-    if (rnd <= 0.73) {
-      estatusObjetivo = 'Excelente';
-      stockObjetivo = Math.floor(Math.random() * 200) + 151;
-    } else if (rnd <= 0.88) {
-      estatusObjetivo = 'Óptimo';
-      stockObjetivo = Math.floor(Math.random() * 100) + 50;
-    } else if (rnd <= 0.98) {
-      estatusObjetivo = 'Alerta: Poco Inventario';
-      stockObjetivo = Math.floor(Math.random() * 49) + 1;
-    } else {
-      estatusObjetivo = 'Inventario Negativo';
-      stockObjetivo = -Math.floor(Math.random() * 20);
-    }
-
-    let entradas = Math.floor(Math.random() * 80);
-    let salidas = stockInicial + entradas - stockObjetivo;
-
-    if (salidas < 0) {
-      salidas = 0;
-      entradas = stockObjetivo - stockInicial;
-    }
-
-    entradas = Math.max(0, Math.round(entradas));
-    salidas = Math.max(0, Math.round(salidas));
-
-    const stockFinal = stockInicial + entradas - salidas;
-    stock[pr.p] = stockFinal;
-
-    let estatus = 'Excelente';
-    if (stockFinal <= 0) estatus = 'Inventario Negativo';
-    else if (stockFinal < 50) estatus = 'Alerta: Poco Inventario';
-    else if (stockFinal < 150) estatus = 'Óptimo';
-
-    const rot = +(salidas / Math.max(stockInicial, 1)).toFixed(2);
-    const vv = +(salidas * pv).toFixed(2);
-    const vs = +(Math.max(stockFinal, 0) * pc).toFixed(2);
-
-    const reg = {
+    temporalData.push({
+      fechaObj: f,
       fecha: f.toISOString().split('T')[0],
       region: r,
       categoria: pr.c,
       producto: pr.p,
       precio_compra: pc,
-      precio_venta: pv,
+      precio_venta: pv
+    });
+  }
+
+  // 3) Ordenar el esqueleto cronológicamente de forma estricta por fecha
+  temporalData.sort((a, b) => a.fechaObj - b.fechaObj);
+
+  // 4) Calcular el flujo de inventario de forma lineal (paso a paso)
+  temporalData.forEach(reg => {
+    const stockInicial = stockFisico[reg.producto];
+
+    // Entrada de mercancía aleatoria (reabastecimiento ocasional para mantener stock saludable)
+    let entradas = 0;
+    if (Math.random() > 0.5) { // 50% de probabilidad de recibir lote de compras
+      entradas = Math.floor(Math.random() * 80) + 10;
+    }
+
+    const disponible = stockInicial + entradas;
+
+    // Las salidas (ventas) nunca pueden superar el inventario disponible acumulado
+    let salidas = 0;
+    if (disponible > 0) {
+      salidas = Math.floor(Math.random() * Math.min(disponible, 60)); // Límite lógico de salidas por transacción
+    }
+
+    const stockFinal = disponible - salidas;
+    stockFisico[reg.producto] = stockFinal; // Actualizamos el stock global del producto para la siguiente fecha
+
+    // Métricas financieras basadas en las salidas físicas reales
+    const rot = +(salidas / Math.max(stockInicial, 1)).toFixed(2);
+    const vv = +(salidas * reg.precio_venta).toFixed(2);
+    const vs = +(Math.max(stockFinal, 0) * reg.precio_compra).toFixed(2);
+
+    // Estatus basado en el stock final real de la bodega
+    let estatus = 'Excelente';
+    if (stockFinal <= 0) estatus = 'Inventario Negativo';
+    else if (stockFinal < 50) estatus = 'Alerta: Poco Inventario';
+    else if (stockFinal < 150) estatus = 'Óptimo';
+
+    data.push({
+      fecha: reg.fecha,
+      region: reg.region,
+      categoria: reg.categoria,
+      producto: reg.producto,
+      precio_compra: reg.precio_compra,
+      precio_venta: reg.precio_venta,
       entradas: entradas,
       salidas: salidas,
       stock_final: stockFinal,
@@ -153,14 +160,10 @@ function generarInventario(){
       valor_vendido: vv,
       valor_stock: vs,
       estatus: estatus
-    };
+    });
+  });
 
-    data.push(reg);
-  }
-
-  // Ordenar la vista de la tabla de forma cronológica
-  data.sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
-
+  // 5) Mostrar en la interfaz visual
   const tbody = document.querySelector('#tabla tbody');
   data.forEach(reg => {
     tbody.insertAdjacentHTML(
@@ -175,7 +178,6 @@ function agruparPorMes(){
  const fi = new Date(fechaInicio.value + 'T00:00:00Z');
  const ff = new Date(fechaFin.value + 'T23:59:59Z');
 
- // Inicialización de rangos mensuales en formato UTC
  const cursor = new Date(Date.UTC(fi.getUTCFullYear(), fi.getUTCMonth(), 1));
  const end = new Date(Date.UTC(ff.getUTCFullYear(), ff.getUTCMonth(), 1));
 
@@ -190,7 +192,6 @@ function agruparPorMes(){
    if (m[key]) m[key].push(d);
  });
 
- // Omitir meses que no contengan registros para evitar errores de referencia
  for (const k in m) {
    if (m[k].length === 0) delete m[k];
  }
@@ -198,7 +199,6 @@ function agruparPorMes(){
  return m;
 }
 
-// Exportación de CSVs individuales con pausa de 1.2 segundos entre descargas
 function exportarCSV(){
  const m=agruparPorMes();
  let delay = 0;
@@ -214,7 +214,6 @@ function exportarCSV(){
  }
 }
 
-// Exportación de JSONs individuales con pausa de 1.2 segundos entre descargas
 function exportarJSON(){
  const m=agruparPorMes();
  let delay = 0;
@@ -228,7 +227,6 @@ function exportarJSON(){
  }
 }
 
-// Exportación de Excels individuales con pausa de 1.2 segundos entre descargas
 function exportarExcel(){
  const m=agruparPorMes();
  let delay = 0;
