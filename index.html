@@ -83,8 +83,9 @@ function generarInventario(){
   document.querySelector('#tabla tbody').innerHTML = '';
 
   const total = +totalRegistros.value;
-  const fi = new Date(fechaInicio.value);
-  const ff = new Date(fechaFin.value);
+  // Forzamos el uso de UTC agregando horas específicas al rango de fechas
+  const fi = new Date(fechaInicio.value + 'T00:00:00Z');
+  const ff = new Date(fechaFin.value + 'T23:59:59Z');
 
   for (let i = 0; i < total; i++) {
     const f = new Date(fi.getTime() + Math.random() * (ff - fi));
@@ -96,35 +97,29 @@ function generarInventario(){
 
     const stockInicial = stock[pr.p];
 
-    // -----------------------------
-    // 1) Selección de estatus objetivo (métrica obligatoria)
-    // -----------------------------
+    // 1) Selección de estatus objetivo
     const rnd = Math.random();
     let estatusObjetivo;
     let stockObjetivo;
 
     if (rnd <= 0.73) {
-      estatusObjetivo = 'Excelente';          // > 150
-      stockObjetivo = Math.floor(Math.random() * 200) + 151; // 151–350
+      estatusObjetivo = 'Excelente';
+      stockObjetivo = Math.floor(Math.random() * 200) + 151;
     } else if (rnd <= 0.88) {
-      estatusObjetivo = 'Óptimo';             // 50–149
-      stockObjetivo = Math.floor(Math.random() * 100) + 50;  // 50–149
+      estatusObjetivo = 'Óptimo';
+      stockObjetivo = Math.floor(Math.random() * 100) + 50;
     } else if (rnd <= 0.98) {
-      estatusObjetivo = 'Alerta: Poco Inventario'; // 1–49
-      stockObjetivo = Math.floor(Math.random() * 49) + 1;    // 1–49
+      estatusObjetivo = 'Alerta: Poco Inventario';
+      stockObjetivo = Math.floor(Math.random() * 49) + 1;
     } else {
-      estatusObjetivo = 'Inventario Negativo'; // <= 0
-      stockObjetivo = -Math.floor(Math.random() * 20);       // 0 a -20
+      estatusObjetivo = 'Inventario Negativo';
+      stockObjetivo = -Math.floor(Math.random() * 20);
     }
 
-    // -----------------------------
     // 2) Cálculo coherente de entradas y salidas
-    // stock_final = stock_inicial + entradas - salidas
-    // -----------------------------
     let entradas = Math.floor(Math.random() * 80);
     let salidas = stockInicial + entradas - stockObjetivo;
 
-    // evitar valores absurdos
     if (salidas < 0) {
       salidas = 0;
       entradas = stockObjetivo - stockInicial;
@@ -136,17 +131,13 @@ function generarInventario(){
     const stockFinal = stockInicial + entradas - salidas;
     stock[pr.p] = stockFinal;
 
-    // -----------------------------
-    // 3) Estatus FINAL calculado (no inventado)
-    // -----------------------------
+    // 3) Estatus FINAL calculado
     let estatus = 'Excelente';
     if (stockFinal <= 0) estatus = 'Inventario Negativo';
     else if (stockFinal < 50) estatus = 'Alerta: Poco Inventario';
     else if (stockFinal < 150) estatus = 'Óptimo';
 
-    // -----------------------------
     // 4) Métricas financieras
-    // -----------------------------
     const rot = +(salidas / Math.max(stockInicial, 1)).toFixed(2);
     const vv = +(salidas * pv).toFixed(2);
     const vs = +(Math.max(stockFinal, 0) * pc).toFixed(2);
@@ -168,34 +159,48 @@ function generarInventario(){
     };
 
     data.push(reg);
-
-    tabla.querySelector('tbody').insertAdjacentHTML(
-      'beforeend',
-      `<tr><td>${reg.fecha}</td><td>${r}</td><td>${pr.c}</td><td>${pr.p}</td><td>${pc}</td><td>${pv}</td><td>${entradas}</td><td>${salidas}</td><td>${stockFinal}</td><td>${rot}</td><td>${vv}</td><td>${vs}</td><td>${estatus}</td></tr>`
-    );
   }
+
+  // Ordenar los datos cronológicamente antes de mostrarlos en la tabla
+  data.sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+
+  // Renderizar la tabla de forma eficiente
+  const fragment = document.createDocumentFragment();
+  data.forEach(reg => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${reg.fecha}</td><td>${reg.region}</td><td>${reg.categoria}</td><td>${reg.producto}</td><td>${reg.precio_compra}</td><td>${reg.precio_venta}</td><td>${reg.entradas}</td><td>${reg.salidas}</td><td>${reg.stock_final}</td><td>${reg.rotacion}</td><td>${reg.valor_vendido}</td><td>${reg.valor_stock}</td><td>${reg.estatus}</td>`;
+    fragment.appendChild(tr);
+  });
+  tabla.querySelector('tbody').appendChild(fragment);
 }
 
 function agruparPorMes(){
  const m = {};
- const fi = new Date(fechaInicio.value);
- const ff = new Date(fechaFin.value);
+ const fi = new Date(fechaInicio.value + 'T00:00:00Z');
+ const ff = new Date(fechaFin.value + 'T23:59:59Z');
 
- // inicializar TODOS los meses del rango
- const cursor = new Date(fi.getFullYear(), fi.getMonth(), 1);
- const end = new Date(ff.getFullYear(), ff.getMonth(), 1);
+ // Inicializar los meses utilizando métodos UTC estrictos
+ const cursor = new Date(Date.UTC(fi.getUTCFullYear(), fi.getUTCMonth(), 1));
+ const end = new Date(Date.UTC(ff.getUTCFullYear(), ff.getUTCMonth(), 1));
 
  while (cursor <= end) {
-   const key = `${cursor.getFullYear()}-${String(cursor.getMonth()+1).padStart(2,'0')}`;
+   const key = `${cursor.getUTCFullYear()}-${String(cursor.getUTCMonth()+1).padStart(2,'0')}`;
    m[key] = [];
-   cursor.setMonth(cursor.getMonth() + 1);
+   cursor.setUTCMonth(cursor.getUTCMonth() + 1);
  }
 
- // asignar registros a su mes correspondiente
+ // Asignar registros a su mes correspondiente
  data.forEach(d => {
    const key = d.fecha.slice(0,7);
    if (m[key]) m[key].push(d);
  });
+
+ // Eliminar claves que no tengan registros para prevenir fallos en la exportación
+ for (const k in m) {
+   if (m[k].length === 0) {
+     delete m[k];
+   }
+ }
 
  return m;
 }
@@ -203,6 +208,7 @@ function agruparPorMes(){
 function exportarCSV(){
  const m=agruparPorMes();
  for(const k in m){
+  if (m[k].length === 0) continue;
   let csv=Object.keys(m[k][0]).join(',')+'\n';
   m[k].forEach(r=>{ csv+=Object.values(r).join(',')+'\n'; });
   descargar(csv,`inventario_${k}.csv`,'text/csv');
@@ -212,6 +218,7 @@ function exportarCSV(){
 function exportarJSON(){
  const m=agruparPorMes();
  for(const k in m){
+  if (m[k].length === 0) continue;
   descargar(JSON.stringify(m[k],null,2),`inventario_${k}.json`,'application/json');
  }
 }
@@ -219,6 +226,7 @@ function exportarJSON(){
 function exportarExcel(){
  const m=agruparPorMes();
  for(const k in m){
+  if (m[k].length === 0) continue;
   const ws=XLSX.utils.json_to_sheet(m[k]);
   const wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,ws,'Inventario');
